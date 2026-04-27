@@ -4,10 +4,21 @@ Cargo.lock
 **/*.rs.bk
 *.pdb
 
+# Cargo / local run outputs
+.cargo_check_output.txt
+.cargo_test_output.txt
+
 # Tauri
 /src-tauri/target/
-/src-tauri/dist/
+/src-tauri/gen/
 **/tauri.conf.json.bak
+
+# Runtime temp data
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
 
 # IDE
 .vscode/
@@ -24,5 +35,5 @@ Thumbs.db
 
 # Project artifacts
 *.log
-dist/
-build/
+/dist/
+/build/

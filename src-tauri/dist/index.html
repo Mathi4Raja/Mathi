@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mathi</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0f1f;
+        --top: #0f172a;
+        --panel: rgba(15, 23, 42, 0.82);
+        --panel-2: rgba(30, 41, 59, 0.68);
+        --border: rgba(148, 163, 184, 0.22);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --ok: #22c55e;
+        --info: #38bdf8;
+        --warn: #f59e0b;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at top, #1e293b, var(--bg) 58%);
+        color: var(--text);
+        font-family: "Segoe UI", system-ui, sans-serif;
+      }
+      body { overflow: hidden; }
+      .app {
+        width: 100%;
+        height: 100%;
+        display: grid;
+        grid-template-rows: 52px 1fr 220px 26px;
+      }
+      .topbar, .statusbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 14px;
+        background: rgba(15, 23, 42, 0.9);
+        border-bottom: 1px solid var(--border);
+      }
+      .statusbar {
+        border-top: 1px solid var(--border);
+        border-bottom: 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .topbar .left, .topbar .right { display: flex; gap: 8px; align-items: center; }
+      .pill {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 12px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .workspace {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 260px 1fr;
+      }
+      .sidebar {
+        border-right: 1px solid var(--border);
+        background: var(--panel);
+        padding: 12px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 12px;
+        min-height: 0;
+      }
+      .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+      }
+      .tree {
+        overflow: auto;
+        display: grid;
+        gap: 6px;
+      }
+      .tree-item {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .tree-item.active {
+        border-color: rgba(56, 189, 248, 0.5);
+        background: rgba(56, 189, 248, 0.2);
+      }
+      .main {
+        min-width: 0;
+        min-height: 0;
+        display: grid;
+        grid-template-rows: 44px 42px 1fr;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        overflow: auto;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.62);
+      }
+      .tab {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 6px 10px;
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .tab.active {
+        border-color: rgba(56, 189, 248, 0.5);
+        background: rgba(56, 189, 248, 0.2);
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr 120px 120px;
+        gap: 8px;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.52);
+      }
+      .controls input, .controls button {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(2, 6, 23, 0.8);
+        color: var(--text);
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .content {
+        min-height: 0;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+      }
+      .editors {
+        min-height: 0;
+        min-width: 0;
+        border-right: 1px solid var(--border);
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+      .editors.split {
+        grid-template-columns: 1fr 1fr;
+      }
+      .editor-pane {
+        min-height: 0;
+        padding: 10px;
+      }
+      .editor {
+        width: 100%;
+        height: 100%;
+        resize: none;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(2, 6, 23, 0.85);
+        color: var(--text);
+        padding: 12px;
+        font-family: Consolas, "SFMono-Regular", ui-monospace, monospace;
+        line-height: 1.45;
+      }
+      .right-panel {
+        min-height: 0;
+        display: grid;
+        grid-template-rows: 1fr 1fr;
+      }
+      .card {
+        border-bottom: 1px solid var(--border);
+        padding: 10px;
+        overflow: auto;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .badge {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      .badge.ok { color: var(--ok); }
+      .badge.warn { color: var(--warn); }
+      .log {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: rgba(2, 6, 23, 0.8);
+        padding: 8px;
+        display: grid;
+        gap: 6px;
+        max-height: 150px;
+        overflow: auto;
+        font-family: Consolas, "SFMono-Regular", ui-monospace, monospace;
+        font-size: 12px;
+      }
+      .terminal-wrap {
+        display: grid;
+        grid-template-rows: 1fr 36px;
+        min-height: 0;
+      }
+      .terminal-input {
+        display: grid;
+        grid-template-columns: 1fr 120px;
+        gap: 8px;
+      }
+      .terminal-input input, .terminal-input button {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(2, 6, 23, 0.8);
+        color: var(--text);
+        padding: 6px 8px;
+      }
+      @media (max-width: 1100px) {
+        .workspace, .content { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .main { grid-template-rows: 44px 42px 1fr; }
+        .right-panel { grid-template-rows: 220px 220px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <div class="topbar">
+        <div class="left"><span class="pill">Mathi</span><span>Editor Shell</span></div>
+        <div class="right"><span class="pill">P2</span><span class="pill">Leader-worker</span><span class="pill">Local-first</span></div>
+      </div>
+      <div class="workspace">
+        <aside class="sidebar">
+          <div>
+            <div class="section-title">Workspace</div>
+            <div class="tree" id="fileTree"></div>
+          </div>
+          <div class="badge ok">Runtime online</div>
+        </aside>
+        <main class="main">
+          <div class="tabs" id="tabs"></div>
+          <div class="controls">
+            <input id="searchInput" type="text" placeholder="Search in active tab" />
+            <input id="replaceInput" type="text" placeholder="Replace with" />
+            <button id="replaceOne">Replace One</button>
+            <button id="toggleSplit">Toggle Split</button>
+          </div>
+          <section class="content">
+            <div class="editors" id="editors">
+              <div class="editor-pane">
+                <textarea class="editor" id="editorPrimary"></textarea>
+              </div>
+              <div class="editor-pane" id="secondaryPane" style="display:none;">
+                <textarea class="editor" id="editorSecondary" readonly></textarea>
+              </div>
+            </div>
+            <section class="right-panel">
+              <div class="card">
+                <div class="section-title">Git Basics + Diagnostics</div>
+                <div class="row">
+                  <span class="badge" id="branchBadge">branch: main</span>
+                  <span class="badge" id="dirtyBadge">changes: 0</span>
+                  <button id="refreshGit" class="badge" style="cursor:pointer; background:rgba(255,255,255,0.04);">refresh</button>
+                </div>
+                <div class="log" id="diagLog"></div>
+              </div>
+              <div class="card terminal-wrap">
+                <div>
+                  <div class="section-title">Terminal</div>
+                  <div class="log" id="terminalLog"></div>
+                </div>
+                <div class="terminal-input">
+                  <input id="terminalInput" type="text" placeholder="Type command (simulated)" />
+                  <button id="runTerminal">Run</button>
+                </div>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+      <div class="statusbar">
+        <div>Workspace: local only · process isolation v1</div>
+        <div>P2 surface: tree · tabs · split · search/replace · terminal · git panel · diagnostics</div>
+      </div>
+    </div>
+    <script>
+      const files = {
+        "src-tauri/src/main.rs": `fn main() {\n    println!(\"Mathi\");\n}\n`,
+        "src-tauri/src/orchestrator.rs": `pub async fn bootstrap(&self) -> Result<(), RuntimeError> {\n    // orchestrator startup\n    Ok(())\n}\n`,
+        "plan/AGENT_CONTRACT.md": "# Agent Contract\n\n- initialize\n- execute\n- health_check\n- shutdown\n",
+        "others/TRACK_TASKS.md": "# TRACK_TASKS\n\nP1 DONE\nP2 IN_PROGRESS\n"
+      };
+
+      const openTabs = [];
+      let activeTab = null;
+      let split = false;
+      const initialSnapshots = new Map(Object.entries(files));
+
+      const fileTree = document.getElementById("fileTree");
+      const tabs = document.getElementById("tabs");
+      const editorPrimary = document.getElementById("editorPrimary");
+      const editorSecondary = document.getElementById("editorSecondary");
+      const editors = document.getElementById("editors");
+      const secondaryPane = document.getElementById("secondaryPane");
+      const diagLog = document.getElementById("diagLog");
+      const terminalLog = document.getElementById("terminalLog");
+      const dirtyBadge = document.getElementById("dirtyBadge");
+
+      function appendLog(el, text) {
+        const line = document.createElement("div");
+        line.textContent = text;
+        el.appendChild(line);
+        el.scrollTop = el.scrollHeight;
+      }
+
+      function renderTree() {
+        fileTree.innerHTML = "";
+        Object.keys(files).forEach((path) => {
+          const node = document.createElement("div");
+          node.className = `tree-item ${activeTab === path ? "active" : ""}`;
+          node.textContent = path;
+          node.onclick = () => openFile(path);
+          fileTree.appendChild(node);
+        });
+      }
+
+      function renderTabs() {
+        tabs.innerHTML = "";
+        openTabs.forEach((path) => {
+          const tab = document.createElement("div");
+          tab.className = `tab ${activeTab === path ? "active" : ""}`;
+          tab.textContent = path.split("/").pop();
+          tab.onclick = () => setActive(path);
+          tabs.appendChild(tab);
+        });
+      }
+
+      function openFile(path) {
+        if (!openTabs.includes(path)) {
+          openTabs.push(path);
+        }
+        setActive(path);
+      }
+
+      function setActive(path) {
+        activeTab = path;
+        editorPrimary.value = files[path] || "";
+        updateSecondary();
+        renderTree();
+        renderTabs();
+        refreshDiagnostics();
+      }
+
+      function updateSecondary() {
+        if (!split || !activeTab) {
+          editorSecondary.value = "";
+          return;
+        }
+        editorSecondary.value = `Preview (read-only)\n\n${files[activeTab] || ""}`;
+      }
+
+      function refreshDiagnostics() {
+        diagLog.innerHTML = "";
+        if (!activeTab) {
+          return;
+        }
+        const source = files[activeTab] || "";
+        const openBraces = (source.match(/\{/g) || []).length;
+        const closeBraces = (source.match(/\}/g) || []).length;
+        if (openBraces !== closeBraces) {
+          appendLog(diagLog, `warn: brace mismatch (${openBraces} open, ${closeBraces} close)`);
+        } else {
+          appendLog(diagLog, "ok: brace balance looks good");
+        }
+        if (source.includes("TODO")) {
+          appendLog(diagLog, "info: TODO markers found");
+        }
+        appendLog(diagLog, `lsp-lite: active tab ${activeTab}`);
+      }
+
+      function refreshGitBadge() {
+        let dirty = 0;
+        for (const [path, content] of Object.entries(files)) {
+          if ((initialSnapshots.get(path) || "") !== content) {
+            dirty += 1;
+          }
+        }
+        dirtyBadge.textContent = `changes: ${dirty}`;
+      }
+
+      document.getElementById("replaceOne").onclick = () => {
+        if (!activeTab) return;
+        const search = document.getElementById("searchInput").value;
+        const replace = document.getElementById("replaceInput").value;
+        if (!search) return;
+        const current = files[activeTab] || "";
+        const index = current.indexOf(search);
+        if (index < 0) {
+          appendLog(terminalLog, `[replace] no match: ${search}`);
+          return;
+        }
+        files[activeTab] = current.slice(0, index) + replace + current.slice(index + search.length);
+        editorPrimary.value = files[activeTab];
+        updateSecondary();
+        refreshDiagnostics();
+        refreshGitBadge();
+        appendLog(terminalLog, `[replace] ${search} -> ${replace}`);
+      };
+
+      document.getElementById("toggleSplit").onclick = () => {
+        split = !split;
+        if (split) {
+          editors.classList.add("split");
+          secondaryPane.style.display = "block";
+        } else {
+          editors.classList.remove("split");
+          secondaryPane.style.display = "none";
+        }
+        updateSecondary();
+      };
+
+      document.getElementById("runTerminal").onclick = () => {
+        const input = document.getElementById("terminalInput");
+        const command = input.value.trim();
+        if (!command) return;
+        appendLog(terminalLog, `> ${command}`);
+        appendLog(terminalLog, `simulated: command queued for approval layer`);
+        input.value = "";
+      };
+
+      document.getElementById("refreshGit").onclick = () => {
+        refreshGitBadge();
+        appendLog(terminalLog, "git: status refreshed");
+      };
+
+      editorPrimary.addEventListener("input", () => {
+        if (!activeTab) return;
+        files[activeTab] = editorPrimary.value;
+        updateSecondary();
+        refreshDiagnostics();
+        refreshGitBadge();
+      });
+
+      appendLog(terminalLog, "bootstrap: editor shell ready");
+      appendLog(terminalLog, "ipc: bounded queue online");
+      appendLog(terminalLog, "policy: balanced defaults active");
+      openFile("src-tauri/src/main.rs");
+      refreshGitBadge();
+    </script>
+  </body>
+</html>
