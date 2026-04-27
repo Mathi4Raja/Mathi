@@ -1,0 +1,28 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Tauri
+/src-tauri/target/
+/src-tauri/dist/
+**/tauri.conf.json.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.env.local
+.env.*.local
+
+# Project artifacts
+*.log
+dist/
+build/
