@@ -10,6 +10,7 @@
     "devUrl": "http://127.0.0.1:1420/"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Mathi",
@@ -17,7 +18,7 @@
         "height": 960,
         "resizable": true,
         "fullscreen": false,
-        "decorations": true
+        "decorations": false
       }
     ],
     "security": {
@@ -25,7 +26,7 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all"
   }
 }

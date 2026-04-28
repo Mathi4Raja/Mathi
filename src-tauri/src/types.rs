@@ -49,4 +49,8 @@ pub enum RuntimeError {
     ApprovalRequired(String),
     #[error("policy denied: {0}")]
     PolicyDenied(String),
+    #[error("crypto failure: {0}")]
+    CryptoFailure(String),
+    #[error("record not found: {0}")]
+    NotFound(String),
 }

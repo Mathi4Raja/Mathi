@@ -1,0 +1,30 @@
+name: quality-gates
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  rust-quality-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: Swatinem/rust-cache@v2
+
+      - name: Unit and integration tests
+        run: cargo test -p mathi-runtime --all-targets
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Enforce coverage gate (>94%)
+        run: cargo llvm-cov --workspace --all-targets --summary-only --fail-under-lines 94

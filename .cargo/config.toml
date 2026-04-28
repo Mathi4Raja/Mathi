@@ -1,0 +1,2 @@
+[alias]
+mathi = "run -p mathi-runtime --bin mathi-runtime"

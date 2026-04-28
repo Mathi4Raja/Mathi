@@ -8,6 +8,8 @@
       :root {
         color-scheme: dark;
         --bg: #0a0f1f;
+        --title: #181818;
+        --title-hover: #2a2d2e;
         --top: #0f172a;
         --panel: rgba(15, 23, 42, 0.82);
         --panel-2: rgba(30, 41, 59, 0.68);
@@ -32,7 +34,113 @@
         width: 100%;
         height: 100%;
         display: grid;
-        grid-template-rows: 52px 1fr 220px 26px;
+        grid-template-rows: 34px 52px 1fr 26px;
+      }
+      .titlebar {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 10px;
+        background: var(--title);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: #cccccc;
+        padding: 0 0 0 10px;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .title-left {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 8px;
+      }
+      .appmark {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        background: linear-gradient(135deg, #00d4ff, #00b67a);
+        flex: 0 0 auto;
+      }
+      .menu-row {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+      }
+      .menu-btn {
+        border: 0;
+        background: transparent;
+        color: #cccccc;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .menu-btn:hover,
+      .menu-btn.active {
+        background: var(--title-hover);
+      }
+      .window-controls {
+        display: grid;
+        grid-template-columns: repeat(3, 46px);
+        -webkit-app-region: no-drag;
+      }
+      .win-btn {
+        border: 0;
+        background: transparent;
+        color: #cccccc;
+        font-size: 13px;
+        height: 34px;
+        cursor: pointer;
+      }
+      .win-btn:hover {
+        background: var(--title-hover);
+      }
+      .win-btn.close:hover {
+        background: #c42b1c;
+        color: #ffffff;
+      }
+      .menu-pop {
+        position: fixed;
+        min-width: 260px;
+        max-height: 70vh;
+        overflow: auto;
+        background: #252526;
+        border: 1px solid #3c3c3c;
+        border-radius: 8px;
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+        z-index: 1000;
+        padding: 6px;
+      }
+      .menu-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 18px;
+        border: 0;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        color: #cccccc;
+        border-radius: 5px;
+        padding: 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .menu-item:hover {
+        background: #094771;
+        color: #ffffff;
+      }
+      .menu-sep {
+        height: 1px;
+        background: #3c3c3c;
+        margin: 6px 2px;
+      }
+      .menu-shortcut {
+        color: #9da3aa;
+        font-size: 12px;
+      }
+      .no-drag {
+        -webkit-app-region: no-drag;
       }
       .topbar, .statusbar {
         display: flex;
@@ -233,6 +341,17 @@
   </head>
   <body>
     <div class="app">
+      <div class="titlebar" data-tauri-drag-region>
+        <div class="title-left" data-tauri-drag-region>
+          <div class="appmark no-drag" title="Mathi"></div>
+          <nav class="menu-row no-drag" id="menuRow"></nav>
+        </div>
+        <div class="window-controls">
+          <button class="win-btn" id="winMin" title="Minimize">-</button>
+          <button class="win-btn" id="winMax" title="Maximize">[ ]</button>
+          <button class="win-btn close" id="winClose" title="Close">X</button>
+        </div>
+      </div>
       <div class="topbar">
         <div class="left"><span class="pill">Mathi</span><span>Editor Shell</span></div>
         <div class="right"><span class="pill">P2</span><span class="pill">Leader-worker</span><span class="pill">Local-first</span></div>
@@ -292,17 +411,13 @@
       </div>
     </div>
     <script>
-      const files = {
-        "src-tauri/src/main.rs": `fn main() {\n    println!(\"Mathi\");\n}\n`,
-        "src-tauri/src/orchestrator.rs": `pub async fn bootstrap(&self) -> Result<(), RuntimeError> {\n    // orchestrator startup\n    Ok(())\n}\n`,
-        "plan/AGENT_CONTRACT.md": "# Agent Contract\n\n- initialize\n- execute\n- health_check\n- shutdown\n",
-        "others/TRACK_TASKS.md": "# TRACK_TASKS\n\nP1 DONE\nP2 IN_PROGRESS\n"
-      };
-
+      const files = {};
       const openTabs = [];
       let activeTab = null;
       let split = false;
-      const initialSnapshots = new Map(Object.entries(files));
+      let workspaceFiles = [];
+      let gitSnapshot = { branch: "unknown", dirty_count: 0, summary: [] };
+      const initialSnapshots = new Map();
 
       const fileTree = document.getElementById("fileTree");
       const tabs = document.getElementById("tabs");
@@ -310,9 +425,278 @@
       const editorSecondary = document.getElementById("editorSecondary");
       const editors = document.getElementById("editors");
       const secondaryPane = document.getElementById("secondaryPane");
+      const terminalCard = document.querySelector(".terminal-wrap");
       const diagLog = document.getElementById("diagLog");
       const terminalLog = document.getElementById("terminalLog");
       const dirtyBadge = document.getElementById("dirtyBadge");
+      const menuRow = document.getElementById("menuRow");
+      const terminalInput = document.getElementById("terminalInput");
+      let menuPopover = null;
+      let activeMenuButton = null;
+
+      function invokeTauri(command, payload = {}) {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke !== "function") {
+          return Promise.reject(new Error("Tauri bridge unavailable"));
+        }
+        return invoke(command, payload);
+      }
+
+      function workspacePathLabel(path) {
+        return path.replace(/\\/g, "/");
+      }
+
+      function clearTerminal() {
+        terminalLog.innerHTML = "";
+      }
+
+      function appendTerminalBlock(text) {
+        String(text)
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .forEach((line) => appendLog(terminalLog, line));
+      }
+
+      function selectActiveEditorLine(lineNumber) {
+        if (!activeTab || !Number.isFinite(lineNumber) || lineNumber < 1) {
+          return;
+        }
+
+        const text = editorPrimary.value;
+        const lines = text.split(/\r?\n/);
+        const targetIndex = Math.min(lineNumber - 1, Math.max(lines.length - 1, 0));
+        let offset = 0;
+        for (let index = 0; index < targetIndex; index += 1) {
+          offset += lines[index].length + 1;
+        }
+
+        editorPrimary.focus();
+        editorPrimary.setSelectionRange(offset, offset);
+        editorPrimary.scrollTop = Math.max(0, offset - 80);
+      }
+
+      async function readWorkspaceFile(path) {
+        const content = await invokeTauri("workspace_read_file", { path });
+        files[path] = content;
+        if (!initialSnapshots.has(path)) {
+          initialSnapshots.set(path, content);
+        }
+        return content;
+      }
+
+      async function saveWorkspaceFile(path, content) {
+        await invokeTauri("workspace_write_file", { path, content });
+        initialSnapshots.set(path, content);
+        files[path] = content;
+        refreshGitBadge();
+      }
+
+      async function runWorkspaceCommand(command) {
+        const result = await invokeTauri("workspace_run_command", { command, cwd: activeTab ? "" : null });
+        appendTerminalBlock(`> ${result.command}`);
+        if (result.stdout) {
+          appendTerminalBlock(result.stdout.trim());
+        }
+        if (result.stderr) {
+          appendTerminalBlock(result.stderr.trim());
+        }
+        appendLog(terminalLog, `[exit ${result.exit_code}]`);
+        return result;
+      }
+
+      async function refreshGitStatus() {
+        try {
+          gitSnapshot = await invokeTauri("workspace_git_status");
+          branchBadge.textContent = `branch: ${gitSnapshot.branch}`;
+          dirtyBadge.textContent = `changes: ${gitSnapshot.dirty_count}`;
+          appendLog(diagLog, `git: ${gitSnapshot.branch} · ${gitSnapshot.dirty_count} change(s)`);
+          gitSnapshot.summary.slice(0, 12).forEach((line) => appendLog(diagLog, `git: ${line}`));
+        } catch (error) {
+          appendLog(diagLog, `[git] refresh failed: ${error.message}`);
+        }
+      }
+
+      async function reloadWorkspaceFiles(preferredPath) {
+        workspaceFiles = [];
+        try {
+          const snapshot = await invokeTauri("workspace_list_files");
+          workspaceFiles = snapshot.map((entry) => workspacePathLabel(entry.path || entry));
+          renderTree();
+
+          const fallback = preferredPath || workspaceFiles.find((path) => path.endsWith("src-tauri/src/main.rs")) || workspaceFiles[0];
+          if (fallback) {
+            await openFile(fallback, true);
+          }
+        } catch (error) {
+          appendLog(diagLog, `[workspace] load failed: ${error.message}`);
+        }
+      }
+
+      async function openFile(path, forceReload = false) {
+        const normalized = workspacePathLabel(path);
+        if (!workspaceFiles.includes(normalized)) {
+          workspaceFiles.push(normalized);
+          workspaceFiles.sort();
+          renderTree();
+        }
+
+        if (forceReload || !files[normalized]) {
+          await readWorkspaceFile(normalized);
+        }
+
+        if (!openTabs.includes(normalized)) {
+          openTabs.push(normalized);
+        }
+
+        activeTab = normalized;
+        editorPrimary.value = files[normalized] || "";
+        updateSecondary();
+        renderTree();
+        renderTabs();
+        refreshDiagnostics();
+      }
+
+      function newScratchBuffer() {
+        const scratchPath = `scratch/untitled-${Date.now()}.txt`;
+        files[scratchPath] = "";
+        initialSnapshots.set(scratchPath, "");
+        openTabs.push(scratchPath);
+        activeTab = scratchPath;
+        editorPrimary.value = "";
+        updateSecondary();
+        renderTree();
+        renderTabs();
+        refreshDiagnostics();
+        refreshGitBadge();
+      }
+
+      function closeActiveTab() {
+        if (!activeTab) {
+          return;
+        }
+
+        const index = openTabs.indexOf(activeTab);
+        openTabs.splice(index, 1);
+        delete files[activeTab];
+        initialSnapshots.delete(activeTab);
+        activeTab = openTabs[index] || openTabs[index - 1] || null;
+
+        if (activeTab) {
+          editorPrimary.value = files[activeTab] || "";
+        } else {
+          editorPrimary.value = "";
+        }
+
+        updateSecondary();
+        renderTree();
+        renderTabs();
+        refreshDiagnostics();
+        refreshGitBadge();
+      }
+
+      async function saveActiveFile(forceNewPath = false) {
+        if (!activeTab) {
+          return;
+        }
+
+        const currentContent = editorPrimary.value;
+        const targetPath = forceNewPath
+          ? prompt("Save workspace file as", activeTab)
+          : activeTab;
+
+        if (!targetPath) {
+          return;
+        }
+
+        const normalized = workspacePathLabel(targetPath);
+        await saveWorkspaceFile(normalized, currentContent);
+        if (normalized !== activeTab) {
+          delete files[activeTab];
+          initialSnapshots.delete(activeTab);
+          openTabs[openTabs.indexOf(activeTab)] = normalized;
+          activeTab = normalized;
+        }
+        refreshDiagnostics();
+      }
+
+      async function openWorkspaceFileFromPrompt() {
+        const target = prompt("Open workspace file", activeTab || workspaceFiles[0] || "src-tauri/src/main.rs");
+        if (!target) {
+          return;
+        }
+        await openFile(target);
+      }
+
+      function toggleTerminalVisibility() {
+        const hidden = terminalCard.style.display === "none";
+        terminalCard.style.display = hidden ? "grid" : "none";
+      }
+
+      const menuModel = [
+        ["File", [
+          { id: "new_text_file", label: "New Text File", shortcut: "Ctrl+N" },
+          { id: "new_file", label: "New File..." },
+          { type: "sep" },
+          { id: "open_file", label: "Open File...", shortcut: "Ctrl+O" },
+          { id: "open_folder", label: "Open Folder..." },
+          { type: "sep" },
+          { id: "save_file", label: "Save", shortcut: "Ctrl+S" },
+          { id: "save_file_as", label: "Save As...", shortcut: "Ctrl+Shift+S" },
+          { type: "sep" },
+          { id: "close_editor", label: "Close Editor", shortcut: "Ctrl+W" },
+          { id: "exit_app", label: "Exit", shortcut: "Alt+F4" }
+        ]],
+        ["Edit", [
+          { id: "undo", label: "Undo", shortcut: "Ctrl+Z" },
+          { id: "redo", label: "Redo", shortcut: "Ctrl+Y" },
+          { type: "sep" },
+          { id: "cut", label: "Cut", shortcut: "Ctrl+X" },
+          { id: "copy", label: "Copy", shortcut: "Ctrl+C" },
+          { id: "paste", label: "Paste", shortcut: "Ctrl+V" },
+          { type: "sep" },
+          { id: "find", label: "Find", shortcut: "Ctrl+F" },
+          { id: "replace", label: "Replace", shortcut: "Ctrl+H" }
+        ]],
+        ["Selection", [
+          { id: "select_all", label: "Select All", shortcut: "Ctrl+A" },
+          { id: "expand_selection", label: "Expand Selection" },
+          { id: "shrink_selection", label: "Shrink Selection" },
+          { id: "selection_column", label: "Column Selection Mode" }
+        ]],
+        ["View", [
+          { id: "command_palette", label: "Command Palette...", shortcut: "Ctrl+Shift+P" },
+          { type: "sep" },
+          { id: "toggle_split", label: "Toggle Editor Group", shortcut: "Ctrl+\\" },
+          { id: "toggle_terminal", label: "Toggle Terminal" },
+          { type: "sep" },
+          { id: "refresh_git", label: "Refresh Git Status" }
+        ]],
+        ["Go", [
+          { id: "go_back", label: "Back", shortcut: "Alt+Left" },
+          { id: "go_forward", label: "Forward", shortcut: "Alt+Right" },
+          { type: "sep" },
+          { id: "go_to_file", label: "Go to File...", shortcut: "Ctrl+P" },
+          { id: "go_to_line", label: "Go to Line...", shortcut: "Ctrl+G" }
+        ]],
+        ["Run", [
+          { id: "run_start", label: "Start Debugging", shortcut: "F5" },
+          { id: "run_without_debug", label: "Run Without Debugging", shortcut: "Ctrl+F5" },
+          { id: "run_stop", label: "Stop Debugging", shortcut: "Shift+F5" }
+        ]],
+        ["Terminal", [
+          { id: "terminal_new", label: "New Terminal" },
+          { id: "terminal_split", label: "Split Terminal" },
+          { type: "sep" },
+          { id: "terminal_clear", label: "Clear Terminal" }
+        ]],
+        ["Help", [
+          { id: "welcome", label: "Welcome" },
+          { id: "documentation", label: "Documentation" },
+          { id: "keyboard_shortcuts", label: "Keyboard Shortcuts" },
+          { type: "sep" },
+          { id: "about_mathi", label: "About Mathi" }
+        ]]
+      ];
 
       function appendLog(el, text) {
         const line = document.createElement("div");
@@ -321,9 +705,141 @@
         el.scrollTop = el.scrollHeight;
       }
 
+      function clearMenuPopover() {
+        if (menuPopover) {
+          menuPopover.remove();
+          menuPopover = null;
+        }
+        if (activeMenuButton) {
+          activeMenuButton.classList.remove("active");
+          activeMenuButton = null;
+        }
+      }
+
+      function handleMenuAction(id) {
+        const actions = {
+          new_text_file: () => newScratchBuffer(),
+          new_file: () => {
+            const path = prompt("Create workspace file", "scratch/new-file.txt");
+            if (!path) return;
+            files[workspacePathLabel(path)] = "";
+            initialSnapshots.set(workspacePathLabel(path), "");
+            void openFile(path, true);
+          },
+          open_file: () => void openWorkspaceFileFromPrompt(),
+          open_folder: () => void reloadWorkspaceFiles(activeTab),
+          save_file: () => void saveActiveFile(),
+          save_file_as: () => void saveActiveFile(true),
+          close_editor: () => closeActiveTab(),
+          exit_app: () => {
+            const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+            if (appWindow) {
+              appWindow.close();
+            } else {
+              window.close();
+            }
+          },
+          undo: () => document.execCommand("undo"),
+          redo: () => document.execCommand("redo"),
+          cut: () => document.execCommand("cut"),
+          copy: () => document.execCommand("copy"),
+          paste: () => document.execCommand("paste"),
+          find: () => document.getElementById("searchInput").focus(),
+          replace: () => document.getElementById("replaceInput").focus(),
+          select_all: () => editorPrimary.select(),
+          expand_selection: () => editorPrimary.focus(),
+          shrink_selection: () => editorPrimary.setSelectionRange(editorPrimary.selectionEnd, editorPrimary.selectionEnd),
+          selection_column: () => appendLog(diagLog, "selection: column mode toggled"),
+          command_palette: () => appendLog(diagLog, "command palette: use menus and search inputs"),
+          toggle_split: () => document.getElementById("toggleSplit").click(),
+          toggle_terminal: () => toggleTerminalVisibility(),
+          refresh_git: () => document.getElementById("refreshGit").click(),
+          go_back: () => {
+            const index = openTabs.indexOf(activeTab);
+            if (index > 0) void openFile(openTabs[index - 1]);
+          },
+          go_forward: () => {
+            const index = openTabs.indexOf(activeTab);
+            if (index >= 0 && index < openTabs.length - 1) void openFile(openTabs[index + 1]);
+          },
+          go_to_file: () => void openWorkspaceFileFromPrompt(),
+          go_to_line: () => {
+            const line = Number.parseInt(prompt("Go to line", "1") || "1", 10);
+            selectActiveEditorLine(line);
+          },
+          run_start: () => terminalInput.focus(),
+          run_without_debug: () => terminalInput.focus(),
+          run_stop: () => appendLog(terminalLog, "run: stop requested"),
+          terminal_new: () => {
+            clearTerminal();
+            appendLog(terminalLog, `terminal session ${++terminalSession}`);
+          },
+          terminal_split: () => appendLog(terminalLog, "terminal: split session available in this panel"),
+          terminal_clear: () => clearTerminal(),
+          welcome: () => void openWorkspaceFileFromPrompt(),
+          documentation: () => void openWorkspaceFileFromPrompt(),
+          keyboard_shortcuts: () => appendLog(diagLog, "shortcuts: use the menu bar and standard editor shortcuts"),
+          about_mathi: () => appendLog(diagLog, "Mathi: local-first editor shell running against real workspace files"),
+        };
+
+        const action = actions[id];
+        if (action) {
+          action();
+        }
+      }
+
+      function openMenu(buttonEl, items) {
+        clearMenuPopover();
+        activeMenuButton = buttonEl;
+        activeMenuButton.classList.add("active");
+
+        const rect = buttonEl.getBoundingClientRect();
+        menuPopover = document.createElement("div");
+        menuPopover.className = "menu-pop";
+        menuPopover.style.left = `${Math.round(rect.left)}px`;
+        menuPopover.style.top = `${Math.round(rect.bottom + 2)}px`;
+
+        items.forEach((item) => {
+          if (item.type === "sep") {
+            const sep = document.createElement("div");
+            sep.className = "menu-sep";
+            menuPopover.appendChild(sep);
+            return;
+          }
+          const row = document.createElement("button");
+          row.className = "menu-item";
+          row.innerHTML = `<span>${item.label}</span><span class="menu-shortcut">${item.shortcut || ""}</span>`;
+          row.onclick = () => {
+            handleMenuAction(item.id);
+            clearMenuPopover();
+          };
+          menuPopover.appendChild(row);
+        });
+
+        document.body.appendChild(menuPopover);
+      }
+
+      function renderCustomMenuBar() {
+        menuRow.innerHTML = "";
+        menuModel.forEach(([title, items]) => {
+          const button = document.createElement("button");
+          button.className = "menu-btn";
+          button.textContent = title;
+          button.onclick = (event) => {
+            event.stopPropagation();
+            if (activeMenuButton === button) {
+              clearMenuPopover();
+            } else {
+              openMenu(button, items);
+            }
+          };
+          menuRow.appendChild(button);
+        });
+      }
+
       function renderTree() {
         fileTree.innerHTML = "";
-        Object.keys(files).forEach((path) => {
+        workspaceFiles.forEach((path) => {
           const node = document.createElement("div");
           node.className = `tree-item ${activeTab === path ? "active" : ""}`;
           node.textContent = path;
@@ -344,10 +860,14 @@
       }
 
       function openFile(path) {
-        if (!openTabs.includes(path)) {
-          openTabs.push(path);
-        }
-        setActive(path);
+        void (async () => {
+          const normalized = workspacePathLabel(path);
+          if (!openTabs.includes(normalized)) {
+            openTabs.push(normalized);
+          }
+          await readWorkspaceFile(normalized);
+          setActive(normalized);
+        })();
       }
 
       function setActive(path) {
@@ -357,6 +877,7 @@
         renderTree();
         renderTabs();
         refreshDiagnostics();
+        void refreshGitStatus();
       }
 
       function updateSecondary() {
@@ -427,19 +948,120 @@
         updateSecondary();
       };
 
-      document.getElementById("runTerminal").onclick = () => {
-        const input = document.getElementById("terminalInput");
-        const command = input.value.trim();
+      async function executeTerminalInput() {
+        const command = terminalInput.value.trim();
         if (!command) return;
-        appendLog(terminalLog, `> ${command}`);
-        appendLog(terminalLog, `simulated: command queued for approval layer`);
-        input.value = "";
+        terminalInput.value = "";
+        try {
+          await runWorkspaceCommand(command);
+        } catch (error) {
+          appendLog(terminalLog, `[terminal] ${error.message}`);
+        }
+      }
+
+      document.getElementById("runTerminal").onclick = () => {
+        void executeTerminalInput();
       };
 
       document.getElementById("refreshGit").onclick = () => {
         refreshGitBadge();
-        appendLog(terminalLog, "git: status refreshed");
+        void refreshGitStatus();
       };
+
+      document.addEventListener("click", (event) => {
+        if (!menuPopover) return;
+        const insidePopover = menuPopover.contains(event.target);
+        const insideMenuRow = menuRow.contains(event.target);
+        if (!insidePopover && !insideMenuRow) {
+          clearMenuPopover();
+        }
+      });
+
+      async function invokeWindowControl(action) {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke === "function") {
+          return invoke("window_control", { action });
+        }
+
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+        if (!appWindow) {
+          throw new Error("Tauri bridge unavailable");
+        }
+
+        if (action === "minimize") {
+          return appWindow.minimize();
+        }
+        if (action === "maximize") {
+          return appWindow.toggleMaximize();
+        }
+        if (action === "restore") {
+          return appWindow.unmaximize();
+        }
+        if (action === "close") {
+          return appWindow.close();
+        }
+
+        throw new Error(`unknown window action: ${action}`);
+      }
+
+      async function isWindowMaximized() {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke === "function") {
+          return Boolean(await invoke("window_is_maximized"));
+        }
+
+        const appWindow = window.__TAURI__?.window?.getCurrentWindow?.();
+        if (!appWindow) {
+          return false;
+        }
+
+        return Boolean(await appWindow.isMaximized());
+      }
+
+      function updateWindowMaxButton(isMaximized) {
+        const maxButton = document.getElementById("winMax");
+        if (!maxButton) {
+          return;
+        }
+
+        maxButton.textContent = isMaximized ? "❐" : "[ ]";
+        maxButton.title = isMaximized ? "Restore" : "Maximize";
+        maxButton.setAttribute("aria-label", maxButton.title);
+      }
+
+      async function syncWindowMaxButton() {
+        try {
+          updateWindowMaxButton(await isWindowMaximized());
+        } catch (error) {
+          appendLog(terminalLog, `[window] state sync failed: ${error.message}`);
+        }
+      }
+
+      appendLog(terminalLog, `bridge: ${window.__TAURI__?.core?.invoke ? "ready" : "missing"}`);
+
+      document.getElementById("winMin").onclick = () => {
+        invokeWindowControl("minimize").catch((error) => appendLog(terminalLog, `[window] minimize failed: ${error.message}`));
+      };
+      document.getElementById("winMax").onclick = async () => {
+        try {
+          const maximizedBeforeClick = await isWindowMaximized();
+          await invokeWindowControl(maximizedBeforeClick ? "restore" : "maximize");
+          updateWindowMaxButton(!(maximizedBeforeClick));
+        } catch (error) {
+          appendLog(terminalLog, `[window] maximize failed: ${error.message}`);
+        }
+      };
+      document.getElementById("winClose").onclick = () => {
+        invokeWindowControl("close").catch((error) => appendLog(terminalLog, `[window] close failed: ${error.message}`));
+      };
+
+      const tauriEvent = window.__TAURI__?.event;
+      if (tauriEvent?.listen) {
+        tauriEvent.listen("dev-reload", () => {
+          appendLog(terminalLog, "dev: hot reload triggered");
+          window.location.reload();
+        });
+      }
 
       editorPrimary.addEventListener("input", () => {
         if (!activeTab) return;
@@ -449,10 +1071,26 @@
         refreshGitBadge();
       });
 
+      terminalInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          void executeTerminalInput();
+        }
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+          event.preventDefault();
+          void saveActiveFile();
+        }
+      });
+
       appendLog(terminalLog, "bootstrap: editor shell ready");
       appendLog(terminalLog, "ipc: bounded queue online");
       appendLog(terminalLog, "policy: balanced defaults active");
-      openFile("src-tauri/src/main.rs");
+      renderCustomMenuBar();
+      syncWindowMaxButton();
+      void reloadWorkspaceFiles("src-tauri/src/main.rs");
       refreshGitBadge();
     </script>
   </body>

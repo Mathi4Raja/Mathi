@@ -54,6 +54,16 @@ impl ApprovalStore {
         approvals.contains(&Self::key(action, agent_id))
     }
 
+    pub fn revoke_session(&self, action: ActionClass, agent_id: &str) {
+        let mut approvals = self.approvals.lock().expect("approval store mutex poisoned");
+        approvals.remove(&Self::key(action, agent_id));
+    }
+
+    pub fn revoke_all_for_agent(&self, agent_id: &str) {
+        let mut approvals = self.approvals.lock().expect("approval store mutex poisoned");
+        approvals.retain(|entry| !entry.ends_with(&format!(":{agent_id}")));
+    }
+
     fn key(action: ActionClass, agent_id: &str) -> String {
         format!("{:?}:{agent_id}", action)
     }
@@ -63,7 +73,6 @@ impl ApprovalStore {
 pub struct SandboxConfig {
     allowed_commands: HashSet<String>,
     denied_tokens: HashSet<String>,
-    allowed_network_hosts: HashSet<String>,
 }
 
 impl Default for SandboxConfig {
@@ -79,7 +88,6 @@ impl Default for SandboxConfig {
         Self {
             allowed_commands,
             denied_tokens,
-            allowed_network_hosts: HashSet::new(),
         }
     }
 }
@@ -99,12 +107,12 @@ impl SandboxConfig {
         self.allowed_commands.contains(executable)
     }
 
-    pub fn is_allowed_network_target(&self, target: &str) -> bool {
-        if self.allowed_network_hosts.is_empty() {
+    pub fn is_allowed_network_target(&self, target: &str, context: &CapabilityContext) -> bool {
+        if context.allowed_network_hosts.is_empty() {
             return false;
         }
 
-        self.allowed_network_hosts.contains(target)
+        context.allowed_network_hosts.contains(target)
     }
 }
 
@@ -123,7 +131,7 @@ impl PolicyEngine {
         match default_decision(check.action) {
             ApprovalDecision::Allow => self.evaluate_allow_action(check, context),
             ApprovalDecision::Scoped => PolicyOutcome::Allow,
-            ApprovalDecision::Block => self.evaluate_blocked_action(check),
+            ApprovalDecision::Block => self.evaluate_blocked_action(check, context),
         }
     }
 
@@ -166,21 +174,30 @@ impl PolicyEngine {
             workspace_path,
         };
 
+        if let Some(deadline_ms) = request.deadline_ms {
+            if deadline_ms > context.max_task_timeout_ms {
+                return PolicyOutcome::Deny(format!(
+                    "deadline {}ms exceeds max allowed {}ms",
+                    deadline_ms, context.max_task_timeout_ms
+                ));
+            }
+        }
+
         self.evaluate(&check, context)
     }
 
     fn evaluate_allow_action(&self, check: &PolicyCheck, context: &CapabilityContext) -> PolicyOutcome {
-        if check.action == ActionClass::Write {
+        if check.action == ActionClass::Write || check.action == ActionClass::Shell {
             if let Some(path) = &check.workspace_path {
                 if !is_in_workspace(path, &context.workspace_root) {
-                    return PolicyOutcome::Deny("write path is outside workspace scope".to_string());
+                    return PolicyOutcome::Deny("path is outside workspace scope".to_string());
                 }
             }
         }
         PolicyOutcome::Allow
     }
 
-    fn evaluate_blocked_action(&self, check: &PolicyCheck) -> PolicyOutcome {
+    fn evaluate_blocked_action(&self, check: &PolicyCheck, context: &CapabilityContext) -> PolicyOutcome {
         if self.approvals.is_granted(check.action, &check.agent_id) {
             match check.action {
                 ActionClass::Shell => {
@@ -193,7 +210,7 @@ impl PolicyEngine {
                 }
                 ActionClass::Network => {
                     if let Some(target) = &check.network_target {
-                        if !self.sandbox.is_allowed_network_target(target) {
+                        if !self.sandbox.is_allowed_network_target(target, context) {
                             return PolicyOutcome::Deny("network target rejected by sandbox".to_string());
                         }
                     }

@@ -71,7 +71,8 @@
 - **Platform-agnostic naming**: Use generic names (e.g. `PLATFORM_EDIT`) not platform-specific ones (e.g. `TELEGRAM_EDIT`) in shared code.
 - **No type ignores**: Do not add `# type: ignore` or `# ty: ignore`. Fix the underlying type issue.
 - **Complete migrations**: When moving modules, update imports to the new owner and remove old compatibility shims in the same change unless preserving a published interface is explicitly required.
-- **Maximum Test Coverage**: There should be maximum test coverage for everything, preferably live smoke test coverage to catch bugs early
+- **Coverage Gate (Mandatory)**: Total automated test coverage must always stay above 94% for all merges and releases. Any change that drops coverage below 94% is release-blocking until fixed.
+- **Regression Requirement**: Every new feature, bug fix, refactor, and version bump must include or update tests so behavior remains stable.
 
 **Multi-Agent Specific:**
 - **Adapter Isolation**: Each adapter (ACP/API provider) runs in its own worker process. Never call adapters from the main thread.
@@ -150,3 +151,10 @@ Before shipping:
 - [ ] Task handoff <50ms overhead (measure leader->worker dispatch + ack cycle)
 - [ ] No memory leaks in long-running swarms (measure memory over 24h test)
 - [ ] Graceful degradation under load (measure with 10+ concurrent tasks)
+
+## TEST QUALITY GATE (Release-Blocking)
+
+- [ ] Overall test coverage >94% at all times
+- [ ] New functionality includes matching unit/integration tests
+- [ ] Version bumps include regression tests for critical paths
+- [ ] CI fails if coverage drops below 94%
